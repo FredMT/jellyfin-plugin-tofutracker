@@ -6,7 +6,17 @@
         "overview": "Sends what you watch in Jellyfin to your TofuTracker library.",
         "owner": "TofuTracker",
         "category": "General",
+        "image": "tofutracker.png",
+        "imageUrl": "https://raw.githubusercontent.com/FredMT/jellyfin-plugin-tofutracker/manifest/tofutracker/tofutracker.png",
         "versions": [
+            {
+                "version": "1.0.0.1",
+                "changelog": "- A play that ends and auto-advances to the next episode is scrobbled once, not twice",
+                "targetAbi": "12.0.0.0",
+                "sourceUrl": "https://github.com/FredMT/jellyfin-plugin-tofutracker/releases/download/v1.0.0.1/tofutracker_1.0.0.1.zip",
+                "checksum": "1ca1171c87914622b49345e24a00fde9",
+                "timestamp": "2026-10-02T19:43:17Z"
+            },
             {
                 "version": "1.0.0.0",
                 "changelog": "- Initial release: playback and manual \"mark played\" scrobbling, per-user linking",
@@ -15,8 +25,6 @@
                 "checksum": "af38135566356a8b7552d3320b7fab6a",
                 "timestamp": "2026-10-02T18:06:20Z"
             }
-        ],
-        "image": "tofutracker.png",
-        "imageUrl": "https://raw.githubusercontent.com/FredMT/jellyfin-plugin-tofutracker/manifest/tofutracker/tofutracker.png"
+        ]
     }
 ]
