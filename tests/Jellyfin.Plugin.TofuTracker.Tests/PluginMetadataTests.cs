@@ -43,6 +43,17 @@ public partial class PluginMetadataTests
     }
 
     [Fact]
+    public void Build_yaml_names_the_developer_and_a_plugin_image_that_is_a_png()
+    {
+        var yaml = BuildYaml();
+
+        Assert.Equal("TofuTracker", yaml["owner"]);
+        Assert.Equal("tofutracker.png", yaml["image"]);
+        var png = File.ReadAllBytes(Path.Combine(AppContext.BaseDirectory, yaml["image"]));
+        Assert.Equal([0x89, 0x50, 0x4E, 0x47, 0x0D, 0x0A, 0x1A, 0x0A], png[..8]);
+    }
+
+    [Fact]
     public void Build_yaml_version_matches_the_assembly_version()
     {
         var assembly = typeof(Plugin).Assembly.GetName().Version;

@@ -27,9 +27,11 @@ else
 fi
 
 [ -f "$work/manifest.json" ] || jprm repo init "$work"
-jprm repo add --plugin-url="$url" "$work" "$absolute_zip"
+# --url is where the manifest branch is served from; jprm copies the plugin image next to manifest.json and points
+# the manifest's imageUrl at it, which is where Jellyfin downloads the catalog icon from.
+jprm repo add --url="https://raw.githubusercontent.com/${repo}/manifest" --plugin-url="$url" "$work" "$absolute_zip"
 
-git -C "$work" add manifest.json
+git -C "$work" add -A
 if git -C "$work" diff --cached --quiet; then
   echo "manifest.json already lists ${tag}."
   exit 0

@@ -28,6 +28,7 @@
 
   <ItemGroup>
     <Content Include="..\..\build.yaml" Link="build.yaml" CopyToOutputDirectory="PreserveNewest" />
+    <Content Include="..\..\tofutracker.png" Link="tofutracker.png" CopyToOutputDirectory="PreserveNewest" />
   </ItemGroup>
 
 </Project>

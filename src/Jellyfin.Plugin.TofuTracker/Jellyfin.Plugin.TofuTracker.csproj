@@ -5,7 +5,7 @@
     <RootNamespace>Jellyfin.Plugin.TofuTracker</RootNamespace>
     <AssemblyName>Jellyfin.Plugin.TofuTracker</AssemblyName>
     <Description>Sends Jellyfin playback to TofuTracker.</Description>
-    <Authors>FredMT</Authors>
+    <Authors>TofuTracker</Authors>
     <PackageLicenseExpression>GPL-3.0-only</PackageLicenseExpression>
     <!-- Keep the publish folder to the plugin DLL only; the server already ships every dependency. -->
     <CopyLocalLockFileAssemblies>false</CopyLocalLockFileAssemblies>

@@ -1,0 +1,6 @@
+<svg xmlns="http://www.w3.org/2000/svg" width="512" height="512" viewBox="0 0 512 512">
+  <title>TofuTracker</title>
+  <rect width="512" height="512" rx="112" ry="112" fill="#0b6e7f"/>
+  <!-- A bold "T": top bar and stem -->
+  <path fill="#ffffff" d="M120 124h272a24 24 0 0 1 24 24v44a24 24 0 0 1-24 24H292v172a24 24 0 0 1-24 24h-24a24 24 0 0 1-24-24V216H120a24 24 0 0 1-24-24v-44a24 24 0 0 1 24-24z"/>
+</svg>
