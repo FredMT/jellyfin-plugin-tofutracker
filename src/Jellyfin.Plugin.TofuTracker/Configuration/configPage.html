@@ -1,0 +1,42 @@
+<div id="tofuTrackerConfigPage" data-role="page" class="page type-interior pluginConfigurationPage"
+     data-controller="__plugin/TofuTracker.js">
+    <div data-role="content">
+        <div class="content-primary">
+            <div class="verticalSection">
+                <div class="sectionTitleContainer">
+                    <h2 class="sectionTitle">TofuTracker</h2>
+                    <a is="emby-linkbutton" class="raised raised-mini" style="margin-left: 2em;" target="_blank"
+                       rel="noopener" href="https://github.com/FredMT/jellyfin-plugin-tofutracker#readme">
+                        <span>Help</span>
+                    </a>
+                </div>
+                <p>
+                    Sends what each linked Jellyfin user plays to their own TofuTracker library. Movies and TV
+                    episodes only, and only titles that have provider ids (IMDb, TMDb, TVDB, ...).
+                </p>
+            </div>
+
+            <form id="tofuTrackerSettingsForm" class="verticalSection">
+                <div class="inputContainer">
+                    <input is="emby-input" type="text" id="tofuTrackerServerUrl" label="Scrobbler address" />
+                    <div class="fieldDescription">
+                        Leave the default unless you run your own scrobbler. Must be https (http only for localhost).
+                    </div>
+                </div>
+                <button is="emby-button" type="submit" class="raised button-submit block">
+                    <span>Save</span>
+                </button>
+            </form>
+
+            <div class="verticalSection">
+                <h3 class="sectionTitle">Jellyfin users</h3>
+                <p class="fieldDescription">
+                    Click <strong>Link</strong> for a user, then give them the code. They open the link, sign in to
+                    TofuTracker and approve it. Each user links their own account.
+                </p>
+                <div id="tofuTrackerUsers"></div>
+                <div id="tofuTrackerSenderStatus" class="fieldDescription" style="margin-top: 1em;"></div>
+            </div>
+        </div>
+    </div>
+</div>
