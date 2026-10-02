@@ -193,6 +193,100 @@ public class PlaybackPlannerTests
     }
 
     [Fact]
+    public void Progress_with_no_id_before_a_start_with_one_is_one_play_with_the_progress_session_id()
+    {
+        // As seen on the wire: Jellyfin delivered the progress tick (position 52 ms) before the start callback, and the
+        // two carried different ids, which left an orphan session on the scrobbler.
+        var planner = Planner();
+
+        var progress = planner.OnProgress(Key, null, 52 * TimeSpan.TicksPerMillisecond, Minute, false, Episode);
+        _time.Advance(TimeSpan.FromMilliseconds(40));
+        var start = planner.OnStart(Key, "7dd49976-0000-0000-0000-000000000000", 0, Minute, false, Episode);
+
+        Assert.Equal(EventActions.Progress, progress?.Action);
+        Assert.Equal(52, progress?.PositionMs);
+        Assert.False(string.IsNullOrWhiteSpace(progress?.SessionId));
+        Assert.Null(start);
+
+        _time.Advance(TimeSpan.FromSeconds(31));
+        var later = planner.OnProgress(Key, "7dd49976-0000-0000-0000-000000000000", 31 * TimeSpan.TicksPerSecond, Minute, false, Episode);
+        var stop = planner.OnStop(Key, "7dd49976-0000-0000-0000-000000000000", 40 * TimeSpan.TicksPerSecond, Minute, true, Episode);
+        Assert.Equal(progress?.SessionId, later?.SessionId);
+        Assert.Equal(progress?.SessionId, stop?.SessionId);
+        Assert.Equal(EventActions.Watched, stop?.Action);
+    }
+
+    [Fact]
+    public void Progress_and_start_with_different_ids_a_moment_apart_are_one_play()
+    {
+        var planner = Planner();
+
+        var progress = planner.OnProgress(Key, "a79df3db", 52 * TimeSpan.TicksPerMillisecond, Minute, false, Episode);
+        _time.Advance(TimeSpan.FromMilliseconds(40));
+        var start = planner.OnStart(Key, "7dd49976", 0, Minute, false, Episode);
+        Assert.Null(start);
+
+        // Either id keeps meaning this play from now on.
+        _time.Advance(TimeSpan.FromSeconds(31));
+        Assert.Equal(progress?.SessionId, planner.OnProgress(Key, "7dd49976", TimeSpan.TicksPerSecond, Minute, false, Episode)?.SessionId);
+        Assert.Equal(progress?.SessionId, planner.OnStop(Key, "a79df3db", Minute, Minute, false, Episode)?.SessionId);
+        Assert.Equal("a79df3db", progress?.SessionId);
+    }
+
+    [Fact]
+    public void Progress_with_an_id_before_a_start_without_one_is_one_play()
+    {
+        var planner = Planner();
+
+        var progress = planner.OnProgress(Key, "p", TimeSpan.TicksPerSecond, Minute, false, Episode);
+        var start = planner.OnStart(Key, null, 0, Minute, false, Episode);
+
+        Assert.NotNull(progress);
+        Assert.Null(start);
+        Assert.Equal("p", planner.OnStop(Key, "p", Minute, Minute, true, Episode)?.SessionId);
+    }
+
+    [Fact]
+    public void A_start_with_a_new_id_long_after_a_progress_born_play_is_a_new_play()
+    {
+        var planner = Planner();
+        var first = planner.OnProgress(Key, "p1", TimeSpan.TicksPerSecond, Minute, false, Episode);
+
+        _time.Advance(TimeSpan.FromMinutes(5));
+        var again = planner.OnStart(Key, "p2", 0, Minute, false, Episode);
+
+        Assert.Equal("p1", first?.SessionId);
+        Assert.Equal(EventActions.Start, again?.Action);
+        Assert.Equal("p2", again?.SessionId);
+    }
+
+    [Fact]
+    public void A_second_start_with_a_new_id_after_a_real_start_is_a_new_play()
+    {
+        var planner = Planner();
+        planner.OnStart(Key, "p1", 0, Minute, false, Episode);
+
+        _time.Advance(TimeSpan.FromMilliseconds(40));
+        var again = planner.OnStart(Key, "p2", 0, Minute, false, Episode);
+
+        Assert.Equal("p2", again?.SessionId);
+    }
+
+    [Fact]
+    public void A_play_that_began_without_an_id_keeps_its_session_id_when_a_later_start_brings_one()
+    {
+        var planner = Planner();
+        var first = planner.OnStart(Key, null, 0, Minute, false, Episode);
+
+        _time.Advance(TimeSpan.FromSeconds(31));
+        var duplicate = planner.OnStart(Key, "late-id", 0, Minute, false, Episode);
+        var progress = planner.OnProgress(Key, "late-id", TimeSpan.TicksPerSecond, Minute, false, Episode);
+
+        Assert.Null(duplicate);
+        Assert.Equal(first?.SessionId, progress?.SessionId);
+    }
+
+    [Fact]
     public void Overlong_session_ids_are_hashed_to_fit_the_limit()
     {
         var id = PlaybackPlanner.SessionIdFor(new string('a', 500));

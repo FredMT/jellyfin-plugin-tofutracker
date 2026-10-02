@@ -19,6 +19,9 @@ public sealed class PlaybackPlanner
     private static readonly TimeSpan StateLifetime = TimeSpan.FromHours(12);
     private static readonly TimeSpan RecentLifetime = TimeSpan.FromHours(1);
 
+    /// <summary>How long a play born from a progress tick still waits for its start callback.</summary>
+    private static readonly TimeSpan StartGrace = TimeSpan.FromSeconds(10);
+
     private readonly TimeProvider _time;
     private readonly object _gate = new();
     private readonly Dictionary<PlayKey, PlayState> _active = [];
@@ -45,15 +48,17 @@ public sealed class PlaybackPlanner
             Prune(now);
 
             // Jellyfin queues the start callback but runs progress inline, so a progress tick can win the race,
-            // and clients sometimes report a start twice. Either way this play is already being tracked.
-            if (!string.IsNullOrWhiteSpace(playSessionId)
-                && _active.TryGetValue(key, out var existing)
-                && string.Equals(existing.RawPlaySessionId, playSessionId, StringComparison.Ordinal))
+            // and clients sometimes report a start twice. Either way this play is already being tracked, and
+            // it keeps the session id its first event went out with.
+            if (_active.TryGetValue(key, out var existing) && IsSameStart(existing, playSessionId, now))
             {
+                existing.StartSeen = true;
+                existing.LastSeen = now;
+                existing.Accept(playSessionId);
                 return null;
             }
 
-            var state = Begin(key, playSessionId, readItem, now);
+            var state = Begin(key, playSessionId, readItem, now, startSeen: true);
             if (state.Item is null)
             {
                 return null;
@@ -73,11 +78,11 @@ public sealed class PlaybackPlanner
             var now = _time.GetUtcNow();
             Prune(now);
 
-            if (!_active.TryGetValue(key, out var state) || IsNewPlay(state, playSessionId))
+            if (!_active.TryGetValue(key, out var state) || !state.Accepts(playSessionId))
             {
                 // Progress for a play we never saw start (server restarted mid-play, or the same item replayed).
                 var fresh = state is null;
-                state = Begin(key, playSessionId, readItem, now);
+                state = Begin(key, playSessionId, readItem, now, startSeen: false);
                 if (state.Item is null)
                 {
                     return null;
@@ -93,6 +98,7 @@ public sealed class PlaybackPlanner
                     now);
             }
 
+            state.Accept(playSessionId);
             state.LastSeen = now;
             if (state.Item is null)
             {
@@ -127,13 +133,13 @@ public sealed class PlaybackPlanner
             Prune(now);
 
             PlayState state;
-            if (_active.Remove(key, out var existing) && !IsNewPlay(existing, playSessionId))
+            if (_active.Remove(key, out var existing) && existing.Accepts(playSessionId))
             {
                 state = existing;
             }
             else
             {
-                state = Begin(key, playSessionId, readItem, now);
+                state = Begin(key, playSessionId, readItem, now, startSeen: true);
                 _active.Remove(key);
             }
 
@@ -209,26 +215,43 @@ public sealed class PlaybackPlanner
         return "h:" + Convert.ToHexStringLower(SHA256.HashData(Encoding.UTF8.GetBytes(value)));
     }
 
-    private static bool IsNewPlay(PlayState state, string? playSessionId)
+    /// <summary>
+    /// Whether a start callback belongs to a play that is already tracked. That is the case when it carries the
+    /// same id (or none, or the tracked play had none), and also when the tracked play was born from a progress
+    /// tick whose start has not arrived yet: Jellyfin delivers progress first, and the two callbacks do not always
+    /// carry the same PlaySessionId. Without this the play would get two session ids and one would be left open.
+    /// </summary>
+    private bool IsSameStart(PlayState existing, string? playSessionId, DateTimeOffset now)
     {
-        // A play that started without a PlaySessionId adopts whichever id later events carry.
-        return !string.IsNullOrWhiteSpace(playSessionId)
-            && state.RawPlaySessionId is not null
-            && !string.Equals(state.RawPlaySessionId, playSessionId, StringComparison.Ordinal);
+        if (!string.IsNullOrWhiteSpace(playSessionId) && existing.HasId(playSessionId))
+        {
+            return true;
+        }
+
+        if (!existing.StartSeen && now - existing.CreatedAt <= StartGrace)
+        {
+            return true;
+        }
+
+        // A tracked play that never learned an id adopts the one the start carries; a start with no id of its own
+        // is a repeat only while the grace window above is open.
+        return !string.IsNullOrWhiteSpace(playSessionId) && existing.RawIds.Count == 0;
     }
 
-    private PlayState Begin(PlayKey key, string? playSessionId, Func<ScrobbleItem?> readItem, DateTimeOffset now)
+    private PlayState Begin(PlayKey key, string? playSessionId, Func<ScrobbleItem?> readItem, DateTimeOffset now, bool startSeen)
     {
         var item = readItem();
         var state = new PlayState
         {
-            RawPlaySessionId = string.IsNullOrWhiteSpace(playSessionId) ? null : playSessionId,
             SessionId = SessionIdFor(playSessionId),
             Item = item,
             ContentKey = item is null ? string.Empty : ItemMapper.ContentKey(item),
+            CreatedAt = now,
             LastSeen = now,
             LastSent = now,
+            StartSeen = startSeen,
         };
+        state.Accept(playSessionId);
         _active[key] = state;
         if (item is not null)
         {
@@ -280,18 +303,41 @@ public sealed class PlaybackPlanner
 
     private sealed class PlayState
     {
-        public string? RawPlaySessionId { get; init; }
+        /// <summary>Every PlaySessionId the callbacks of this play have carried (usually one, none for some clients).</summary>
+        public HashSet<string> RawIds { get; } = new(StringComparer.Ordinal);
 
+        /// <summary>The id the first event of this play went out with. It never changes.</summary>
         public required string SessionId { get; init; }
 
         public ScrobbleItem? Item { get; init; }
 
         public required string ContentKey { get; init; }
 
+        public DateTimeOffset CreatedAt { get; init; }
+
         public DateTimeOffset LastSeen { get; set; }
 
         public DateTimeOffset LastSent { get; set; }
 
         public bool Paused { get; set; }
+
+        /// <summary>Whether Jellyfin's start callback has been seen (a play can be born from a progress tick instead).</summary>
+        public bool StartSeen { get; set; }
+
+        public bool HasId(string playSessionId) => RawIds.Contains(playSessionId);
+
+        /// <summary>A callback without an id, or a play that has not learned one yet, always belongs to this play.</summary>
+        public bool Accepts(string? playSessionId)
+        {
+            return string.IsNullOrWhiteSpace(playSessionId) || RawIds.Count == 0 || RawIds.Contains(playSessionId);
+        }
+
+        public void Accept(string? playSessionId)
+        {
+            if (!string.IsNullOrWhiteSpace(playSessionId))
+            {
+                RawIds.Add(playSessionId);
+            }
+        }
     }
 }
