@@ -6,6 +6,7 @@ export default function (view) {
         form: view.querySelector('#tofuTrackerSettingsForm'),
         serverUrl: view.querySelector('#tofuTrackerServerUrl'),
         users: view.querySelector('#tofuTrackerUsers'),
+        notSent: view.querySelector('#tofuTrackerNotSent'),
         senderStatus: view.querySelector('#tofuTrackerSenderStatus'),
     };
 
@@ -99,10 +100,12 @@ export default function (view) {
 
             const line = el('div');
             line.appendChild(document.createTextNode('Open '));
-            const link = el('a', '', pairing.verificationUrl || '');
+            // "button-link" is the dashboard theme's own link colour (the browser default is unreadable on dark).
+            const link = el('a', 'button-link', pairing.verificationUrl || '');
             link.href = pairing.verificationUrl || '#';
             link.target = '_blank';
-            link.rel = 'noopener';
+            link.rel = 'noopener noreferrer';
+            link.style.color = 'var(--jf-palette-primary-main, #00a4dc)';
             link.style.textDecoration = 'underline';
             line.appendChild(link);
             line.appendChild(document.createTextNode(', sign in to TofuTracker and approve this code.'));
@@ -119,8 +122,8 @@ export default function (view) {
         }
 
         if (pairing.state === 'approved') {
-            box.textContent = 'Linked to ' + (user.tofuTrackerUsername || 'TofuTracker') + '.';
-            return box;
+            // The row's own state line already says "Linked to <name>"; repeating it here showed it twice.
+            return user.linked ? null : el('div', 'fieldDescription', 'Linked to ' + (user.tofuTrackerUsername || 'TofuTracker') + '.');
         }
 
         const reasons = {
@@ -168,6 +171,19 @@ export default function (view) {
         return row;
     }
 
+    function renderNotSent(items) {
+        els.notSent.textContent = '';
+        els.notSent.hidden = !items || items.length === 0;
+        if (els.notSent.hidden) {
+            return;
+        }
+        els.notSent.appendChild(el('div', '', 'Not sent:'));
+        items.forEach(function (item) {
+            const when = item.at ? ' (' + new Date(item.at).toLocaleString() + ')' : '';
+            els.notSent.appendChild(el('div', '', '\u2022 ' + item.name + ': ' + item.reason + when));
+        });
+    }
+
     function render(status) {
         lastStatus = status;
         if (document.activeElement !== els.serverUrl.querySelector('input') && document.activeElement !== els.serverUrl) {
@@ -178,6 +194,8 @@ export default function (view) {
         status.users.forEach(function (user) {
             els.users.appendChild(renderUser(user));
         });
+
+        renderNotSent(status.notSent);
 
         const parts = [];
         parts.push(status.pendingEvents + ' event(s) waiting to be sent');
