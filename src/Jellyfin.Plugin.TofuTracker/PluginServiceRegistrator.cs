@@ -23,6 +23,7 @@ public class PluginServiceRegistrator : IPluginServiceRegistrator
         serviceCollection.AddSingleton(sp => new LinkStore(DataDirectory(sp), Logger(sp)));
         serviceCollection.AddSingleton(sp => new OutboundQueue(DataDirectory(sp), Logger(sp), sp.GetRequiredService<TimeProvider>()));
         serviceCollection.AddSingleton(sp => new PlaybackPlanner(sp.GetRequiredService<TimeProvider>()));
+        serviceCollection.AddSingleton(sp => new SkippedItemLog(sp.GetRequiredService<TimeProvider>()));
 
         serviceCollection.AddSingleton(sp => new ScrobbleSender(
             sp.GetRequiredService<OutboundQueue>(),

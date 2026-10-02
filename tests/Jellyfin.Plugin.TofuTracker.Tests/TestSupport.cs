@@ -128,3 +128,43 @@ internal static class Samples
         return new UserLink(userId, "conn-" + userId.ToString("N")[..6], token, username, DateTimeOffset.Parse("2026-10-02T12:00:00Z", System.Globalization.CultureInfo.InvariantCulture));
     }
 }
+
+/// <summary>Collects log lines so tests can see what an administrator would see.</summary>
+internal sealed class CapturingLoggerFactory : ILoggerFactory
+{
+    public List<(LogLevel Level, string Message)> Entries { get; } = [];
+
+    public ILogger CreateLogger(string categoryName) => new Capture(this);
+
+    public void AddProvider(ILoggerProvider provider)
+    {
+    }
+
+    public void Dispose()
+    {
+    }
+
+    public IReadOnlyList<(LogLevel Level, string Message)> Snapshot()
+    {
+        lock (Entries)
+        {
+            return [.. Entries];
+        }
+    }
+
+    private sealed class Capture(CapturingLoggerFactory owner) : ILogger
+    {
+        public IDisposable? BeginScope<TState>(TState state)
+            where TState : notnull => null;
+
+        public bool IsEnabled(LogLevel logLevel) => true;
+
+        public void Log<TState>(LogLevel logLevel, EventId eventId, TState state, Exception? exception, Func<TState, Exception?, string> formatter)
+        {
+            lock (owner.Entries)
+            {
+                owner.Entries.Add((logLevel, formatter(state, exception)));
+            }
+        }
+    }
+}

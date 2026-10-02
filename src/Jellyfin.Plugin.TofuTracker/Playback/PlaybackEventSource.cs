@@ -25,6 +25,7 @@ public sealed class PlaybackEventSource : IHostedService, IDisposable
     private readonly OutboundQueue _queue;
     private readonly ScrobbleSender _sender;
     private readonly PairingCoordinator _pairing;
+    private readonly SkippedItemLog _skipped;
     private readonly ILogger _logger;
     private readonly Channel<Work> _channel = Channel.CreateBounded<Work>(new BoundedChannelOptions(5000)
     {
@@ -44,6 +45,7 @@ public sealed class PlaybackEventSource : IHostedService, IDisposable
         OutboundQueue queue,
         ScrobbleSender sender,
         PairingCoordinator pairing,
+        SkippedItemLog skipped,
         ILoggerFactory loggerFactory)
     {
         _sessions = sessions;
@@ -53,6 +55,7 @@ public sealed class PlaybackEventSource : IHostedService, IDisposable
         _queue = queue;
         _sender = sender;
         _pairing = pairing;
+        _skipped = skipped;
         _logger = loggerFactory.CreateLogger("Jellyfin.Plugin.TofuTracker");
     }
 
@@ -258,10 +261,35 @@ public sealed class PlaybackEventSource : IHostedService, IDisposable
         var mapped = ItemMapper.Map(facts);
         if (mapped is null)
         {
-            _logger.LogDebug("TofuTracker skipped '{Name}': it has no provider ids (IMDb, TMDb, TVDB, ...). Refresh its metadata.", facts.Name);
+            ReportSkipped(item.Id, facts);
         }
 
         return mapped;
+    }
+
+    /// <summary>
+    /// Tells the administrator why a play is not sent: once in the log per item and server run (this runs for every
+    /// start, not for every progress tick), and always on the plugin page's "Not sent" list.
+    /// </summary>
+    private void ReportSkipped(Guid itemId, MediaFacts facts)
+    {
+        const string Reason = "no provider ids (IMDb, TMDb, TheTVDB, ...); refresh or identify its metadata";
+        var name = DisplayName(facts);
+
+        if (_skipped.Record(itemId.ToString("N"), name, Reason))
+        {
+            _logger.LogInformation(
+                "TofuTracker is not sending '{Name}': it has no provider ids (IMDb, TMDb, TheTVDB, ...). Refresh or identify its metadata in Jellyfin (Edit metadata) so it can be matched.",
+                name);
+        }
+    }
+
+    private static string DisplayName(MediaFacts facts)
+    {
+        var name = string.IsNullOrWhiteSpace(facts.Name) ? "(unnamed)" : facts.Name;
+        return facts.Kind == MediaKind.Episode && !string.IsNullOrWhiteSpace(facts.SeriesName)
+            ? $"{facts.SeriesName} - {name}"
+            : name;
     }
 
     private abstract record Work;

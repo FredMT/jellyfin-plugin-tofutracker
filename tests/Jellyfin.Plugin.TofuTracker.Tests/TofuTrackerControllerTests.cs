@@ -25,6 +25,7 @@ public sealed class TofuTrackerControllerTests : IDisposable
     private readonly Jellyfin.Database.Implementations.Entities.User _alice = JellyfinFixtures.NewUser("alice");
     private readonly Jellyfin.Database.Implementations.Entities.User _bob = JellyfinFixtures.NewUser("Bob");
     private readonly LinkStore _links;
+    private readonly SkippedItemLog _skipped;
     private readonly PairingCoordinator _pairing;
     private readonly TofuTrackerController _controller;
 
@@ -48,7 +49,8 @@ public sealed class TofuTrackerControllerTests : IDisposable
         var host = Substitute.For<IServerApplicationHost>();
         host.FriendlyName.Returns("Living room");
 
-        _controller = new TofuTrackerController(users, host, _links, _pairing, sender);
+        _skipped = new SkippedItemLog(_time);
+        _controller = new TofuTrackerController(users, host, _links, _pairing, sender, _skipped);
         _http.Respond = _ => FakeHandler.Json(HttpStatusCode.OK, StartJson);
     }
 
@@ -92,6 +94,23 @@ public sealed class TofuTrackerControllerTests : IDisposable
         Assert.DoesNotContain("super-secret-token", json, StringComparison.Ordinal);
         Assert.DoesNotContain("token", json, StringComparison.OrdinalIgnoreCase);
         Assert.Equal(ScrobblerUrl.Default, status.ServerUrl);
+    }
+
+    [Fact]
+    public void Status_lists_the_recently_skipped_items_newest_first()
+    {
+        Assert.Empty(_controller.GetStatus().Value!.NotSent);
+
+        _skipped.Record("a", "Home video", "no provider ids");
+        _time.Advance(TimeSpan.FromMinutes(1));
+        _skipped.Record("b", "Show - Pilot", "no provider ids");
+
+        var notSent = _controller.GetStatus().Value!.NotSent;
+
+        Assert.Equal(["Show - Pilot", "Home video"], notSent.Select(i => i.Name).ToArray());
+        Assert.Equal("no provider ids", notSent[0].Reason);
+        Assert.Equal(_time.GetUtcNow(), notSent[0].At);
+        Assert.Contains("\"notSent\"", Serialize(_controller.GetStatus().Value), StringComparison.Ordinal);
     }
 
     [Fact]

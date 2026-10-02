@@ -25,19 +25,22 @@ public class TofuTrackerController : ControllerBase
     private readonly LinkStore _links;
     private readonly PairingCoordinator _pairing;
     private readonly ScrobbleSender _sender;
+    private readonly SkippedItemLog _skipped;
 
     public TofuTrackerController(
         IUserManager users,
         IServerApplicationHost host,
         LinkStore links,
         PairingCoordinator pairing,
-        ScrobbleSender sender)
+        ScrobbleSender sender,
+        SkippedItemLog skipped)
     {
         _users = users;
         _host = host;
         _links = links;
         _pairing = pairing;
         _sender = sender;
+        _skipped = skipped;
     }
 
     /// <summary>Gets the server URL, every Jellyfin user with their link and pairing state, and the sender's health.</summary>
@@ -58,6 +61,7 @@ public class TofuTrackerController : ControllerBase
             PendingEvents = _sender.PendingCount,
             LastSuccessAt = _sender.LastSuccessAt,
             LastError = _sender.LastError,
+            NotSent = [.. _skipped.Recent().Select(i => new SkippedItemDto { Name = i.Name, Reason = i.Reason, At = i.At })],
         };
     }
 
@@ -198,6 +202,22 @@ public class TofuTrackerController : ControllerBase
 
         [JsonPropertyName("lastError")]
         public string? LastError { get; set; }
+
+        [JsonPropertyName("notSent")]
+        public IReadOnlyList<SkippedItemDto> NotSent { get; set; } = [];
+    }
+
+    /// <summary>An item that was played but could not be sent, and why.</summary>
+    public sealed class SkippedItemDto
+    {
+        [JsonPropertyName("name")]
+        public string Name { get; set; } = string.Empty;
+
+        [JsonPropertyName("reason")]
+        public string Reason { get; set; } = string.Empty;
+
+        [JsonPropertyName("at")]
+        public DateTimeOffset At { get; set; }
     }
 
     /// <summary>One Jellyfin user and whether they are linked.</summary>

@@ -5,7 +5,7 @@ using MediaBrowser.Controller.Entities;
 using MediaBrowser.Controller.Library;
 using MediaBrowser.Controller.Session;
 using MediaBrowser.Model.Entities;
-using Microsoft.Extensions.Logging.Abstractions;
+using Microsoft.Extensions.Logging;
 using NSubstitute;
 
 namespace Jellyfin.Plugin.TofuTracker.Tests;
@@ -20,6 +20,8 @@ public sealed class PlaybackEventSourceTests : IAsyncLifetime
     private readonly IUserDataManager _userData = Substitute.For<IUserDataManager>();
     private readonly Jellyfin.Database.Implementations.Entities.User _alice = JellyfinFixtures.NewUser("alice");
     private readonly Jellyfin.Database.Implementations.Entities.User _bob = JellyfinFixtures.NewUser("bob");
+    private readonly CapturingLoggerFactory _logs = new();
+    private SkippedItemLog _skipped = null!;
     private PlaybackEventSource _source = null!;
 
     public async Task InitializeAsync()
@@ -34,7 +36,8 @@ public sealed class PlaybackEventSourceTests : IAsyncLifetime
         };
         var pairing = new PairingCoordinator(_http.CreateClient, () => "https://scrobble.test", () => Samples.Client, links, TimeProvider.System, Samples.Logger);
 
-        _source = new PlaybackEventSource(_sessions, _userData, links, new PlaybackPlanner(TimeProvider.System), queue, sender, pairing, NullLoggerFactory.Instance);
+        _skipped = new SkippedItemLog(TimeProvider.System);
+        _source = new PlaybackEventSource(_sessions, _userData, links, new PlaybackPlanner(TimeProvider.System), queue, sender, pairing, _skipped, _logs);
         await _source.StartAsync(default);
     }
 
@@ -45,7 +48,7 @@ public sealed class PlaybackEventSourceTests : IAsyncLifetime
         _dir.Dispose();
     }
 
-    private void Playback(string kind, BaseItem item, Jellyfin.Database.Implementations.Entities.User user, string playSessionId, long positionTicks = 0, bool paused = false, bool completed = false)
+    private void Playback(string kind, BaseItem item, Jellyfin.Database.Implementations.Entities.User user, string? playSessionId, long positionTicks = 0, bool paused = false, bool completed = false)
     {
         var args = new PlaybackProgressEventArgs
         {
@@ -278,6 +281,76 @@ public sealed class PlaybackEventSourceTests : IAsyncLifetime
         Playback("stop", movie, _alice, "play-9", completed: true);
 
         Assert.Empty(await EventsAsync(0, 300));
+    }
+
+    [Fact]
+    public async Task A_skipped_title_is_logged_once_at_information_and_listed_for_the_admin_page()
+    {
+        var movie = new MediaBrowser.Controller.Entities.Movies.Movie { Id = Guid.NewGuid(), Name = "Home video" };
+
+        // A play with its progress ticks, then a replay and a manual mark: the log line comes once, not per tick.
+        Playback("start", movie, _alice, "play-a");
+        for (var i = 1; i <= 5; i++)
+        {
+            Playback("progress", movie, _alice, "play-a", positionTicks: i * TimeSpan.TicksPerSecond);
+        }
+
+        Playback("stop", movie, _alice, "play-a", completed: false);
+        Playback("start", movie, _alice, "play-b");
+        UserDataSaved(movie, _alice, UserDataSaveReason.TogglePlayed, played: true);
+        Assert.Empty(await EventsAsync(0, 400));
+
+        var lines = _logs.Snapshot().Where(e => e.Message.Contains("Home video", StringComparison.Ordinal)).ToList();
+        var line = Assert.Single(lines);
+        Assert.Equal(LogLevel.Information, line.Level);
+        Assert.Contains("refresh or identify", line.Message, StringComparison.OrdinalIgnoreCase);
+
+        var listed = Assert.Single(_skipped.Recent());
+        Assert.Equal("Home video", listed.Name);
+        Assert.Contains("provider ids", listed.Reason, StringComparison.Ordinal);
+    }
+
+    [Fact]
+    public async Task Each_skipped_title_gets_its_own_log_line()
+    {
+        var first = new MediaBrowser.Controller.Entities.Movies.Movie { Id = Guid.NewGuid(), Name = "Home video" };
+        var second = new MediaBrowser.Controller.Entities.Movies.Movie { Id = Guid.NewGuid(), Name = "Holiday clip" };
+
+        Playback("start", first, _alice, "p1");
+        Playback("start", second, _alice, "p2");
+        await EventsAsync(0, 400);
+
+        Assert.Equal(2, _logs.Snapshot().Count(e => e.Level == LogLevel.Information && e.Message.Contains("is not sending", StringComparison.Ordinal)));
+        Assert.Equal(["Holiday clip", "Home video"], _skipped.Recent().Select(i => i.Name).ToArray());
+    }
+
+    [Fact]
+    public async Task A_progress_tick_that_beats_its_start_and_carries_no_id_is_still_one_session()
+    {
+        var movie = JellyfinFixtures.Matrix();
+
+        Playback("progress", movie, _alice, null, positionTicks: 52 * TimeSpan.TicksPerMillisecond);
+        Playback("start", movie, _alice, "7dd49976");
+        Playback("stop", movie, _alice, "7dd49976", positionTicks: 130 * 60 * TimeSpan.TicksPerSecond, completed: true);
+
+        var events = await EventsAsync(2);
+        Assert.Equal(["progress", "watched"], events.Select(e => e.GetProperty("action").GetString()!).ToArray());
+        Assert.Single(events.Select(e => e.GetProperty("sessionId").GetString()).Distinct());
+        Assert.Equal(52, events[0].GetProperty("positionMs").GetInt64());
+    }
+
+    [Fact]
+    public async Task A_progress_tick_that_beats_its_start_with_another_id_is_still_one_session()
+    {
+        var movie = JellyfinFixtures.Matrix();
+
+        Playback("progress", movie, _alice, "a79df3db", positionTicks: 52 * TimeSpan.TicksPerMillisecond);
+        Playback("start", movie, _alice, "7dd49976");
+        Playback("stop", movie, _alice, "7dd49976", positionTicks: 20 * 60 * TimeSpan.TicksPerSecond, completed: false);
+
+        var events = await EventsAsync(2);
+        Assert.Equal(["progress", "stop"], events.Select(e => e.GetProperty("action").GetString()!).ToArray());
+        Assert.All(events, e => Assert.Equal("a79df3db", e.GetProperty("sessionId").GetString()));
     }
 
     [Fact]
