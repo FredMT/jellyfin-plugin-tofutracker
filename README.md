@@ -98,7 +98,7 @@ When you link a user it also sends a label like `Living room / alice` (your serv
 can tell your connections apart in TofuTracker.
 
 **Not sent:** file names or paths, library names, your server's address, Jellyfin user ids, passwords, or anything about
-music, photos, books or live TV. Items that have no provider id at all are skipped entirely. TofuTracker's servers do see the
+music, photos, books or live TV. Items that have no provider id at all are skipped entirely (the admin page lists them under "Not sent"). TofuTracker's servers do see the
 IP address your Jellyfin server connects from, as any web service does.
 
 ## What is stored on your server
@@ -117,6 +117,10 @@ Uninstalling the plugin does not delete these files. Delete the `data/tofutracke
 Check, in this order: the user is linked (Dashboard > Plugins > TofuTracker says "Linked to ..."); the title has provider ids
 (open the item, **Edit metadata**, and look for IMDb, TMDb or TheTVDB ids; see the TheTVDB section above); the page
 shows `0 event(s) waiting` and a recent delivery time. If it says `last error`, the message tells you what is wrong.
+
+A title that was played but skipped shows up under **Not sent** below the users list on the same page (the last 20 since
+the server started) with the reason, and is written once to the Jellyfin log at `Information` level:
+`TofuTracker is not sending '<title>': it has no provider ids ...`. Refresh or identify its metadata and play it again.
 
 **"Link rejected by TofuTracker: link again."**
 TofuTracker no longer accepts that user's token, usually because the connection was removed in TofuTracker's settings. Click
@@ -173,9 +177,18 @@ How it is put together:
 
 ## Releasing
 
-Push a tag such as `v1.0.0`. The `Release` workflow runs the tests, builds the zip with
-[jprm](https://github.com/oddstr13/jellyfin-plugin-repository-manager), publishes a GitHub release and adds the version to
-`manifest.json` on the `manifest` branch, which is the repository URL above.
+Everything runs on a machine with Docker, `gh` and Python:
+
+```bash
+scripts/dn.sh test -c Release                 # tests must be green
+scripts/build-zip.sh                          # artifacts/tofutracker_<version>.zip (DLL, tofutracker.png, meta.json)
+gh release create v<version> artifacts/tofutracker_<version>.zip --title v<version>
+GH_TOKEN="$(gh auth token)" scripts/update-manifest.sh v<version> FredMT/jellyfin-plugin-tofutracker
+```
+
+`update-manifest.sh` adds the version (checksum, download URL of the release asset, icon) to `manifest.json` on the
+`manifest` branch, which is the repository URL in the install steps. It needs [jprm](https://github.com/oddstr13/jellyfin-plugin-repository-manager)
+(`pip install jprm`). Keep `version` in `build.yaml` and `Directory.Build.props` in step.
 
 ## License
 
