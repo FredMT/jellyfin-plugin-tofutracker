@@ -22,11 +22,15 @@ public sealed class PlaybackPlanner
     /// <summary>How long a play born from a progress tick still waits for its start callback.</summary>
     private static readonly TimeSpan StartGrace = TimeSpan.FromSeconds(10);
 
+    /// <summary>How long after a play ended a repeated stop (or a late progress tick) for it is ignored.</summary>
+    private static readonly TimeSpan EndGrace = TimeSpan.FromSeconds(30);
+
     private readonly TimeProvider _time;
     private readonly object _gate = new();
     private readonly Dictionary<PlayKey, PlayState> _active = [];
     private readonly Dictionary<(Guid UserId, string ContentKey), DateTimeOffset> _recentPlays = [];
     private readonly Dictionary<(Guid UserId, string SessionId), DateTimeOffset> _recentManual = [];
+    private readonly Dictionary<PlayKey, DateTimeOffset> _recentEnds = [];
 
     public PlaybackPlanner(TimeProvider time)
     {
@@ -58,6 +62,7 @@ public sealed class PlaybackPlanner
                 return null;
             }
 
+            _recentEnds.Remove(key);
             var state = Begin(key, playSessionId, readItem, now, startSeen: true);
             if (state.Item is null)
             {
@@ -80,6 +85,12 @@ public sealed class PlaybackPlanner
 
             if (!_active.TryGetValue(key, out var state) || !state.Accepts(playSessionId))
             {
+                // A tick that trails the stop of a play that just ended is not a new play.
+                if (state is null && EndedJustNow(key, now))
+                {
+                    return null;
+                }
+
                 // Progress for a play we never saw start (server restarted mid-play, or the same item replayed).
                 var fresh = state is null;
                 state = Begin(key, playSessionId, readItem, now, startSeen: false);
@@ -139,10 +150,18 @@ public sealed class PlaybackPlanner
             }
             else
             {
+                // Jellyfin can report the stop of one play twice (a natural end that auto-advances does). The
+                // play is already closed; a second terminal event would be a second scrobble under a new id.
+                if (existing is null && EndedJustNow(key, now))
+                {
+                    return null;
+                }
+
                 state = Begin(key, playSessionId, readItem, now, startSeen: true);
                 _active.Remove(key);
             }
 
+            _recentEnds[key] = now;
             if (state.Item is null)
             {
                 return null;
@@ -261,6 +280,11 @@ public sealed class PlaybackPlanner
         return state;
     }
 
+    private bool EndedJustNow(PlayKey key, DateTimeOffset now)
+    {
+        return _recentEnds.TryGetValue(key, out var endedAt) && now - endedAt <= EndGrace;
+    }
+
     private void Touch(Guid userId, string contentKey, DateTimeOffset now)
     {
         _recentPlays[(userId, contentKey)] = now;
@@ -293,6 +317,11 @@ public sealed class PlaybackPlanner
         foreach (var key in _recentPlays.Where(p => now - p.Value > RecentLifetime).Select(p => p.Key).ToList())
         {
             _recentPlays.Remove(key);
+        }
+
+        foreach (var key in _recentEnds.Where(p => now - p.Value > RecentLifetime).Select(p => p.Key).ToList())
+        {
+            _recentEnds.Remove(key);
         }
 
         foreach (var key in _recentManual.Where(p => now - p.Value > RecentLifetime).Select(p => p.Key).ToList())

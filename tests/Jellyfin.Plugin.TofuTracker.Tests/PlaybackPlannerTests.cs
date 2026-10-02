@@ -124,6 +124,28 @@ public class PlaybackPlannerTests
     }
 
     [Fact]
+    public void A_stop_reported_twice_ends_the_play_once()
+    {
+        var planner = Planner();
+        planner.OnStart(Key, "play-1", 0, 45 * Minute, false, Episode);
+        _time.Advance(TimeSpan.FromMinutes(44));
+
+        var first = planner.OnStop(Key, "play-1", 45 * Minute, 45 * Minute, true, Episode);
+        _time.Advance(TimeSpan.FromMilliseconds(200));
+        var repeat = planner.OnStop(Key, null, 45 * Minute, 45 * Minute, true, Episode);
+        var lateTick = planner.OnProgress(Key, "play-1", 45 * Minute, 45 * Minute, false, Episode);
+
+        Assert.Equal(EventActions.Watched, first?.Action);
+        Assert.Null(repeat);
+        Assert.Null(lateTick);
+
+        // A real replay right after still starts a new play.
+        var again = planner.OnStart(Key, "play-2", 0, 45 * Minute, false, Episode);
+        Assert.Equal(EventActions.Start, again?.Action);
+        Assert.Equal("play-2", again?.SessionId);
+    }
+
+    [Fact]
     public void A_play_session_ends_with_stop_so_the_next_play_of_the_same_item_starts_fresh()
     {
         var planner = Planner();
