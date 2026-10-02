@@ -1,0 +1,52 @@
+<Project Sdk="Microsoft.NET.Sdk">
+
+  <PropertyGroup>
+    <TargetFramework>net10.0</TargetFramework>
+    <RootNamespace>Jellyfin.Plugin.TofuTracker</RootNamespace>
+    <AssemblyName>Jellyfin.Plugin.TofuTracker</AssemblyName>
+    <Description>Sends Jellyfin playback to TofuTracker.</Description>
+    <Authors>FredMT</Authors>
+    <PackageLicenseExpression>GPL-3.0-only</PackageLicenseExpression>
+    <!-- Keep the publish folder to the plugin DLL only; the server already ships every dependency. -->
+    <CopyLocalLockFileAssemblies>false</CopyLocalLockFileAssemblies>
+  </PropertyGroup>
+
+  <!--
+    Normal builds compile against the Jellyfin NuGet packages. Setting ServerAssembliesDir
+    (see scripts/verify-against-server.sh) compiles against the DLLs of a real server install instead,
+    which proves binary compatibility with that exact server build.
+  -->
+  <ItemGroup Condition="'$(ServerAssembliesDir)' == ''">
+    <PackageReference Include="Jellyfin.Controller" Version="$(JellyfinVersion)">
+      <ExcludeAssets>runtime</ExcludeAssets>
+    </PackageReference>
+    <PackageReference Include="Jellyfin.Model" Version="$(JellyfinVersion)">
+      <ExcludeAssets>runtime</ExcludeAssets>
+    </PackageReference>
+  </ItemGroup>
+
+  <ItemGroup Condition="'$(ServerAssembliesDir)' != ''">
+    <Reference Include="MediaBrowser.Controller"><HintPath>$(ServerAssembliesDir)/MediaBrowser.Controller.dll</HintPath><Private>false</Private></Reference>
+    <Reference Include="MediaBrowser.Model"><HintPath>$(ServerAssembliesDir)/MediaBrowser.Model.dll</HintPath><Private>false</Private></Reference>
+    <Reference Include="MediaBrowser.Common"><HintPath>$(ServerAssembliesDir)/MediaBrowser.Common.dll</HintPath><Private>false</Private></Reference>
+    <Reference Include="Jellyfin.Data"><HintPath>$(ServerAssembliesDir)/Jellyfin.Data.dll</HintPath><Private>false</Private></Reference>
+    <Reference Include="Jellyfin.Extensions"><HintPath>$(ServerAssembliesDir)/Jellyfin.Extensions.dll</HintPath><Private>false</Private></Reference>
+    <Reference Include="Jellyfin.Database.Implementations"><HintPath>$(ServerAssembliesDir)/Jellyfin.Database.Implementations.dll</HintPath><Private>false</Private></Reference>
+  </ItemGroup>
+
+  <ItemGroup>
+    <FrameworkReference Include="Microsoft.AspNetCore.App" />
+  </ItemGroup>
+
+  <ItemGroup>
+    <None Remove="Configuration\configPage.html" />
+    <EmbeddedResource Include="Configuration\configPage.html" />
+    <None Remove="Configuration\configPage.js" />
+    <EmbeddedResource Include="Configuration\configPage.js" />
+  </ItemGroup>
+
+  <ItemGroup>
+    <InternalsVisibleTo Include="Jellyfin.Plugin.TofuTracker.Tests" />
+  </ItemGroup>
+
+</Project>

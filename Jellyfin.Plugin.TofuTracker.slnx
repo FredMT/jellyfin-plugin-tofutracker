@@ -1,0 +1,8 @@
+<Solution>
+  <Folder Name="/src/">
+    <Project Path="src/Jellyfin.Plugin.TofuTracker/Jellyfin.Plugin.TofuTracker.csproj" />
+  </Folder>
+  <Folder Name="/tests/">
+    <Project Path="tests/Jellyfin.Plugin.TofuTracker.Tests/Jellyfin.Plugin.TofuTracker.Tests.csproj" />
+  </Folder>
+</Solution>
