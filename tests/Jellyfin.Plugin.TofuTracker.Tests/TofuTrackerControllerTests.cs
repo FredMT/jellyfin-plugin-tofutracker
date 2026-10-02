@@ -137,13 +137,13 @@ public sealed class TofuTrackerControllerTests : IDisposable
     public async Task After_approval_the_page_sees_the_linked_state_and_still_no_token()
     {
         await _controller.StartLink(new TofuTrackerController.UserRequest { UserId = _alice.Id }, default);
-        _http.Respond = _ => FakeHandler.Json(HttpStatusCode.OK, """{"status":"approved","token":"fresh-secret","connectionId":"c1","username":"kalugu"}""");
+        _http.Respond = _ => FakeHandler.Json(HttpStatusCode.OK, """{"status":"approved","token":"fresh-secret","connectionId":"c1","username":"alice-tt"}""");
         await _pairing.PollOnceAsync(_alice.Id, default);
 
         var user = _controller.GetLinkStatus(_alice.Id).Value!;
 
         Assert.True(user.Linked);
-        Assert.Equal("kalugu", user.TofuTrackerUsername);
+        Assert.Equal("alice-tt", user.TofuTrackerUsername);
         Assert.Equal("approved", user.Pairing?.State);
         Assert.DoesNotContain("fresh-secret", Serialize(user), StringComparison.Ordinal);
         Assert.DoesNotContain("fresh-secret", Serialize(_controller.GetStatus().Value), StringComparison.Ordinal);

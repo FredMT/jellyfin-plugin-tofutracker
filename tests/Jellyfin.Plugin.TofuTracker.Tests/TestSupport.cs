@@ -123,7 +123,7 @@ internal static class Samples
         return new ScrobbleEvent(action, at, sessionId, 1000, 60000, manual, item ?? Matrix());
     }
 
-    public static UserLink Link(Guid userId, string token = "tok-secret-1", string username = "kalugu")
+    public static UserLink Link(Guid userId, string token = "tok-secret-1", string username = "alice-tt")
     {
         return new UserLink(userId, "conn-" + userId.ToString("N")[..6], token, username, DateTimeOffset.Parse("2026-10-02T12:00:00Z", System.Globalization.CultureInfo.InvariantCulture));
     }

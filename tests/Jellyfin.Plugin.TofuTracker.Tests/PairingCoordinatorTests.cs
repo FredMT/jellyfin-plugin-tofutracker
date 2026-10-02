@@ -71,16 +71,16 @@ public class PairingCoordinatorTests : IDisposable
     public async Task Approval_stores_the_token_and_never_exposes_it()
     {
         await _pairing.StartAsync(User, "x", default);
-        _http.Respond = _ => FakeHandler.Json(HttpStatusCode.OK, """{"status":"approved","token":"secret-token-xyz","connectionId":"conn-1","username":"kalugu"}""");
+        _http.Respond = _ => FakeHandler.Json(HttpStatusCode.OK, """{"status":"approved","token":"secret-token-xyz","connectionId":"conn-1","username":"alice-tt"}""");
 
         var view = await _pairing.PollOnceAsync(User, default);
 
         Assert.Equal(PairingState.Approved, view.State);
-        Assert.Equal("kalugu", view.Username);
+        Assert.Equal("alice-tt", view.Username);
         var link = _links.GetActive(User);
         Assert.Equal("secret-token-xyz", link?.Token);
         Assert.Equal("conn-1", link?.ConnectionId);
-        Assert.Equal("kalugu", link?.Username);
+        Assert.Equal("alice-tt", link?.Username);
         Assert.DoesNotContain("secret-token-xyz", System.Text.Json.JsonSerializer.Serialize(view), StringComparison.Ordinal);
         Assert.DoesNotContain("secret-token-xyz", System.Text.Json.JsonSerializer.Serialize(_pairing.Status(User)), StringComparison.Ordinal);
 
